@@ -75,33 +75,42 @@ export default function Chat() {
   }
 
   // 4️⃣ FOLLOW-UPS
-  async function requestFollowUps(assistantText: string) {
-    const res = await fetch("/api/v1/tasks/follow_up/completions", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        model: MODEL,
-        messages: [
-          { role: "assistant", content: assistantText }
-        ],
-      }),
-    });
+async function requestFollowUps(assistantText: string) {
+  const res = await fetch("/api/v1/tasks/follow_up/completions", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      model: MODEL,
+      messages: [{ role: "assistant", content: assistantText }],
+    }),
+  });
 
-    const data = await res.json();
+  const data = await res.json();
 
-    // 💥 OpenWebUI follow-up content
-    const text =
-      data?.choices?.[0]?.message?.content ||
-      data?.choices?.[0]?.text ||
-      "";
+  // prende il testo ritornato
+  let raw = data?.choices?.[0]?.message?.content || "";
 
-    const suggestions = text
-      .split("\n")
-      .map((l) => l.trim())
-      .filter((l) => l.length > 0);
+  // Rimuove ```json ``` e ``` finali
+  raw = raw
+    .replace(/```json/i, "")
+    .replace(/```/g, "")
+    .trim();
 
-    setFollowUps(suggestions.slice(0, 4));
+  let parsed: any = null;
+
+  try {
+    parsed = JSON.parse(raw);
+  } catch (e) {
+    console.error("❌ ERR: follow-up JSON non parsabile:", raw);
+    return;
   }
+
+  // Estraggo follow_ups
+  const ups = parsed?.follow_ups || [];
+
+  setFollowUps(Array.isArray(ups) ? ups : []);
+}
+
 
   // 🌟 FLUSSO COMPLETO
   async function handleSend() {
