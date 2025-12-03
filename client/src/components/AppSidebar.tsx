@@ -49,7 +49,10 @@ const menuItems = [
 ];
 
 export function AppSidebar() {
-  const [location] = useLocation();
+  
+
+const wouterLoc = useLocation?.();
+const location = wouterLoc ? wouterLoc[0] : "/";
 
   return (
     <Sidebar data-testid="sidebar-main">

@@ -16,7 +16,12 @@ import Almanacco from "@/pages/almanacco";
 import Preghiere from "@/pages/preghiere";
 import NotFound from "@/pages/not-found";
 
+import ChatPage from "@/pages/chat";
+
+
 const navItems = [
+  { title: "Chat", url: "/chat", icon: BookOpen },
+
   { title: "Liturgia", url: "/", icon: BookOpen },
   { title: "Notizie", url: "/news", icon: Newspaper },
   { title: "Calendario", url: "/calendario", icon: Calendar },
@@ -28,6 +33,7 @@ const navItems = [
 function Router() {
   return (
     <Switch>
+      <Route path="/chat" component={ChatPage} />
       <Route path="/" component={Liturgia} />
       <Route path="/liturgia" component={Liturgia} />
       <Route path="/news/:id" component={NewsDetail} />
