@@ -33,7 +33,7 @@ app.use(express.urlencoded({ extended: false }));
 
 app.post("/api/v1/chats/new", proxyChatNew);               // CREA CHAT
 app.post("/api/v1/chat/completions", proxyCompletion);     // COMPLETION
-app.post("/api/v1/chat/completed", proxyFinalize);         // FINALIZE
+app.put("/api/v1/chat/completed", proxyFinalize);         // FINALIZE
 app.post("/api/v1/tasks/follow_up/completions", proxyFollowup); // FOLLOW-UP GEN.
 
 // ------------------ API LOGGER ------------------

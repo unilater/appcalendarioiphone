@@ -24,92 +24,98 @@ export default function Chat() {
   }, [messages, followUps]);
 
   // 1️⃣ CREA CHAT
-  async function createChat(userText: string) {
-    const res = await fetch("/api/v1/chats/new", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
+async function createChat(userText: string) {
+  const res = await fetch("/api/v1/chats/new", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      chat: {
+        title: null,
         model: MODEL,
-        messages: [{ role: "user", content: userText }],
-      }),
-    });
+        system: null,
+        messages: [
+          { role: "user", content: userText }
+        ]
+      },
+      folder_id: null
+    })
+  });
 
-    const data = await res.json();
-    return data.id;
-  }
+  const data = await res.json();
+  return data.id;
+}
+
+
+
 
   // 2️⃣ COMPLETION
-  async function requestCompletion(cid: string, userText: string) {
-    const res = await fetch("/api/v1/chat/completions", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        model: MODEL,
-        chat_id: cid,
-        stream: false,
-        messages: [
-          ...messages,
-          { role: "user", content: userText }
-        ],
-      }),
-    });
+ async function requestCompletion(cid: string, userText: string) {
+  const res = await fetch("/api/v1/chat/completions", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      model: MODEL,
+      chat_id: cid,
+      stream: false,
+      messages: [
+        { role: "user", content: userText }
+      ],
+      background_tasks: {
+        follow_up_generation: true
+      }
+    }),
+  });
 
-    return res.json();
-  }
+  return res.json();
+}
 
-  // 3️⃣ FINALIZE
-  async function requestFinalize(cid: string, assistantId: string, assistantText: string) {
-    await fetch("/api/v1/chat/completed", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        chat_id: cid,
-        id: assistantId,
-        model: MODEL,
-        message: {
-          role: "assistant",
-          content: assistantText,
-        },
-      }),
-    });
-  }
+
+// 3️⃣ FINALIZE — versione corretta
+async function requestFinalize(cid: string, assistantId: string, assistantText: string) {
+  await fetch("/api/v1/chat/completed", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      chat_id: cid,
+      message_id: assistantId,
+      model: MODEL,
+      message: {
+        role: "assistant",
+        content: assistantText
+      }
+    })
+  });
+}
+
+
 
   // 4️⃣ FOLLOW-UPS
-async function requestFollowUps(assistantText: string) {
+async function requestFollowUps(fullAssistantText: string) {
   const res = await fetch("/api/v1/tasks/follow_up/completions", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       model: MODEL,
-      messages: [{ role: "assistant", content: assistantText }],
+      messages: [{ role: "assistant", content: fullAssistantText }],
     }),
   });
 
   const data = await res.json();
 
-  // prende il testo ritornato
   let raw = data?.choices?.[0]?.message?.content || "";
 
-  // Rimuove ```json ``` e ``` finali
-  raw = raw
-    .replace(/```json/i, "")
-    .replace(/```/g, "")
-    .trim();
-
-  let parsed: any = null;
+  raw = raw.replace(/```json/i, "")
+           .replace(/```/g, "")
+           .trim();
 
   try {
-    parsed = JSON.parse(raw);
-  } catch (e) {
-    console.error("❌ ERR: follow-up JSON non parsabile:", raw);
-    return;
+    const parsed = JSON.parse(raw);
+    setFollowUps(parsed.follow_ups || []);
+  } catch {
+    console.error("❌ JSON follow-up NON valido:", raw);
   }
-
-  // Estraggo follow_ups
-  const ups = parsed?.follow_ups || [];
-
-  setFollowUps(Array.isArray(ups) ? ups : []);
 }
+
 
 
   // 🌟 FLUSSO COMPLETO
