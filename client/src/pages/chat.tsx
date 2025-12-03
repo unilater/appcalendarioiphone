@@ -30,14 +30,11 @@ async function createChat(userText: string) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       chat: {
-        title: null,
         model: MODEL,
-        system: null,
         messages: [
           { role: "user", content: userText }
         ]
-      },
-      folder_id: null
+      }
     })
   });
 
@@ -73,19 +70,20 @@ async function createChat(userText: string) {
 // 3️⃣ FINALIZE — versione corretta
 async function requestFinalize(cid: string, assistantId: string, assistantText: string) {
   await fetch("/api/v1/chat/completed", {
-    method: "PUT",
+    method: "POST",            // <— FIX: era PUT
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       chat_id: cid,
-      message_id: assistantId,
+      id: assistantId,         // <— FIX: era message_id
       model: MODEL,
       message: {
         role: "assistant",
-        content: assistantText
+        content: assistantText,
       }
     })
   });
 }
+
 
 
 
@@ -104,17 +102,29 @@ async function requestFollowUps(fullAssistantText: string) {
 
   let raw = data?.choices?.[0]?.message?.content || "";
 
-  raw = raw.replace(/```json/i, "")
-           .replace(/```/g, "")
-           .trim();
+  raw = raw
+    .replace(/```json/i, "")
+    .replace(/```/g, "")
+    .trim();
+
+  let parsed: any;
 
   try {
-    const parsed = JSON.parse(raw);
-    setFollowUps(parsed.follow_ups || []);
-  } catch {
+    parsed = JSON.parse(raw);
+  } catch (e) {
     console.error("❌ JSON follow-up NON valido:", raw);
+    return;
   }
+
+  const ups =
+    parsed.follow_ups ??
+    parsed.followups ??
+    parsed.suggestions ??
+    [];
+
+  setFollowUps(Array.isArray(ups) ? ups : []);
 }
+
 
 
 
