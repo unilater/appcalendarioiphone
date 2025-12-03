@@ -1,43 +1,52 @@
-import { Request, Response, NextFunction } from "express";
+import type { Request, Response } from "express";
 
-const OPENWEBUI_URL =
-  "https://stream.calendariodellafede.it/api/chat/completions";
+//
+// 🔥 THIS is the REAL OpenWebUI server
+// (Quello che risponde a curl sulla tua macchina esterna)
+//
+const BASE = "https://stream.calendariodellafede.it";
+const API_KEY = "sk-c081102b8ef34d9093bca49d0b1140e2";
 
-
-const OPENWEBUI_API_KEY = "sk-c081102b8ef34d9093bca49d0b1140e2";
-
-export async function openwebuiProxy(
-  req: Request,
-  res: Response,
-  _next: NextFunction
-) {
+async function forward(req: Request, res: Response, path: string) {
   try {
-    const response = await fetch(OPENWEBUI_URL, {
+    const upstream = await fetch(BASE + path, {
       method: "POST",
       headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${OPENWEBUI_API_KEY}`,
+        "Authorization": `Bearer ${API_KEY}`,
+        "Content-Type": "application/json"
       },
-      body: JSON.stringify(req.body),
+      body: JSON.stringify(req.body)
     });
 
-    const text = await response.text();
+    const raw = await upstream.text();
 
     try {
-      const json = JSON.parse(text);
-      return res.status(response.status).json(json);
+      return res.status(upstream.status).json(JSON.parse(raw));
     } catch {
-      console.error("❌ Risposta non JSON:", text);
-      return res.status(500).json({
-        error: "Invalid JSON received from OpenWebUI",
-        raw: text,
-      });
+      return res.status(502).json({ error: "Invalid JSON", raw });
     }
-  } catch (error) {
-    console.error("❌ Proxy OpenWebUI ERROR:", error);
-    return res.status(500).json({
-      error: "Proxy error",
-      details: String(error),
-    });
+
+  } catch (e) {
+    return res.status(500).json({ error: "Proxy failed", details: String(e) });
   }
+}
+
+// ---------------------
+// REAL OpenWebUI endpoints
+// ---------------------
+
+export function proxyChatNew(req: Request, res: Response) {
+  return forward(req, res, "/api/v1/chats/new");
+}
+
+export function proxyCompletion(req: Request, res: Response) {
+  return forward(req, res, "/api/v1/chat/completions");
+}
+
+export function proxyFinalize(req: Request, res: Response) {
+  return forward(req, res, "/api/v1/chat/completed");
+}
+
+export function proxyFollowup(req: Request, res: Response) {
+  return forward(req, res, "/api/v1/tasks/follow_up/completions");
 }

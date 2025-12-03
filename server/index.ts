@@ -1,7 +1,13 @@
-import express, { type Request, Response, NextFunction } from "express";
+import express from "express";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
-import { openwebuiProxy } from "./openwebui-proxy";
+
+import {
+  proxyChatNew,
+  proxyCompletion,
+  proxyFinalize,
+  proxyFollowup
+} from "./openwebui-proxy";
 
 const app = express();
 
@@ -22,8 +28,13 @@ app.use(
 
 app.use(express.urlencoded({ extended: false }));
 
-// ------------------ OPENWEBUI PROXY ------------------
-app.use("/api/openwebui", openwebuiProxy);
+// ------------------ OPENWEBUI ENDPOINTS ------------------
+// Tutti esattamente come richiede OpenWebUI
+
+app.post("/api/v1/chats/new", proxyChatNew);               // CREA CHAT
+app.post("/api/v1/chat/completions", proxyCompletion);     // COMPLETION
+app.post("/api/v1/chat/completed", proxyFinalize);         // FINALIZE
+app.post("/api/v1/tasks/follow_up/completions", proxyFollowup); // FOLLOW-UP GEN.
 
 // ------------------ API LOGGER ------------------
 app.use((req, res, next) => {

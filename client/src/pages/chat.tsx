@@ -1,9 +1,10 @@
-import { useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { Card, CardHeader, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { Loader2, Send } from "lucide-react";
+import { Separator } from "@/components/ui/separator";
+
+const MODEL = "llama3.1:8b";
 
 interface Message {
   role: "user" | "assistant";
@@ -11,107 +12,187 @@ interface Message {
 }
 
 export default function Chat() {
+  const [chatId, setChatId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
+  const [followUps, setFollowUps] = useState<string[]>([]);
   const [input, setInput] = useState("");
-  const [loading, setLoading] = useState(false);
 
-  async function sendMessage() {
+  const messagesEndRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages, followUps]);
+
+  // 1️⃣ CREA CHAT
+  async function createChat(userText: string) {
+    const res = await fetch("/api/v1/chats/new", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: MODEL,
+        messages: [{ role: "user", content: userText }],
+      }),
+    });
+
+    const data = await res.json();
+    return data.id;
+  }
+
+  // 2️⃣ COMPLETION
+  async function requestCompletion(cid: string, userText: string) {
+    const res = await fetch("/api/v1/chat/completions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: MODEL,
+        chat_id: cid,
+        stream: false,
+        messages: [
+          ...messages,
+          { role: "user", content: userText }
+        ],
+      }),
+    });
+
+    return res.json();
+  }
+
+  // 3️⃣ FINALIZE
+  async function requestFinalize(cid: string, assistantId: string, assistantText: string) {
+    await fetch("/api/v1/chat/completed", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        chat_id: cid,
+        id: assistantId,
+        model: MODEL,
+        message: {
+          role: "assistant",
+          content: assistantText,
+        },
+      }),
+    });
+  }
+
+  // 4️⃣ FOLLOW-UPS
+  async function requestFollowUps(assistantText: string) {
+    const res = await fetch("/api/v1/tasks/follow_up/completions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: MODEL,
+        messages: [
+          { role: "assistant", content: assistantText }
+        ],
+      }),
+    });
+
+    const data = await res.json();
+
+    // 💥 OpenWebUI follow-up content
+    const text =
+      data?.choices?.[0]?.message?.content ||
+      data?.choices?.[0]?.text ||
+      "";
+
+    const suggestions = text
+      .split("\n")
+      .map((l) => l.trim())
+      .filter((l) => l.length > 0);
+
+    setFollowUps(suggestions.slice(0, 4));
+  }
+
+  // 🌟 FLUSSO COMPLETO
+  async function handleSend() {
     if (!input.trim()) return;
-
-    const newMessage: Message = {
-      role: "user",
-      content: input,
-    };
-
-    setMessages((prev) => [...prev, newMessage]);
+    const userText = input.trim();
     setInput("");
-    setLoading(true);
 
-    try {
-      const res = await fetch("/api/openwebui", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          model: "llama3.1:8b", // puoi modificarlo
-          messages: [...messages, newMessage],
-          stream: false,
-        }),
-      });
+    setMessages((m) => [...m, { role: "user", content: userText }]);
 
-      const data = await res.json();
-
-      const aiReply: Message = {
-        role: "assistant",
-        content: data?.choices?.[0]?.message?.content || "Errore nella risposta",
-      };
-
-      setMessages((prev) => [...prev, aiReply]);
-    } catch (err) {
-      console.error("Errore OpenWebUI:", err);
-      setMessages((prev) => [
-        ...prev,
-        { role: "assistant", content: "❌ Errore di connessione al server." },
-      ]);
+    // A) se la chat non esiste → creala
+    let cid = chatId;
+    if (!cid) {
+      cid = await createChat(userText);
+      setChatId(cid);
     }
 
-    setLoading(false);
+    // B) manda completion
+    const comp = await requestCompletion(cid!, userText);
+
+    const assistantText =
+      comp?.choices?.[0]?.message?.content ?? "…";
+
+    const assistantId = comp?.id;
+
+    setMessages((m) => [...m, { role: "assistant", content: assistantText }]);
+
+    // C) finalizza
+    await requestFinalize(cid!, assistantId, assistantText);
+
+    // D) followup
+    await requestFollowUps(assistantText);
   }
 
   return (
-    <div className="container max-w-3xl mx-auto py-8 px-4">
-      <h1 className="font-serif text-3xl mb-6">Chat</h1>
-
-      <Card className="shadow-sm border">
-        <CardHeader className="border-b py-4">
-          <h2 className="font-serif text-xl">Conversazione</h2>
+    <div className="container max-w-3xl mx-auto px-4 py-6">
+      <Card className="border shadow-sm">
+        <CardHeader>
+          <h2 className="text-2xl font-serif">Chat</h2>
+          <p className="text-sm text-muted-foreground">Assistente spirituale AI</p>
         </CardHeader>
 
-        <CardContent className="space-y-4 py-4 max-h-[65vh] overflow-y-auto">
-          {messages.map((msg, i) => (
-            <div
-              key={i}
-              className={`flex gap-3 ${
-                msg.role === "user" ? "justify-end" : "justify-start"
-              }`}
-            >
-              {msg.role === "assistant" && (
-                <Avatar className="h-8 w-8">
-                  <AvatarFallback>AI</AvatarFallback>
-                </Avatar>
-              )}
-
+        <CardContent className="space-y-4">
+          {/* MESSAGGI */}
+          <div className="h-[55vh] overflow-y-auto pr-2 space-y-4">
+            {messages.map((msg, i) => (
               <div
-                className={`px-4 py-2 rounded-xl max-w-[75%] whitespace-pre-line ${
+                key={i}
+                className={`p-3 rounded-xl max-w-[85%] ${
                   msg.role === "user"
-                    ? "bg-primary text-primary-foreground"
-                    : "bg-muted text-foreground"
+                    ? "ml-auto bg-primary text-white"
+                    : "mr-auto bg-muted"
                 }`}
               >
                 {msg.content}
               </div>
+            ))}
+            <div ref={messagesEndRef} />
+          </div>
 
-              {msg.role === "user" && (
-                <Avatar className="h-8 w-8">
-                  <AvatarFallback>Tu</AvatarFallback>
-                </Avatar>
-              )}
+          {/* FOLLOW UPS */}
+          {followUps.length > 0 && (
+            <div className="space-y-2">
+              <Separator />
+              <h4 className="font-serif text-lg">Suggerimenti</h4>
+              <div className="flex flex-wrap gap-2">
+                {followUps.map((f, idx) => (
+                  <Button
+                    key={idx}
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setInput(f)}
+                  >
+                    {f}
+                  </Button>
+                ))}
+              </div>
             </div>
-          ))}
+          )}
+
+          {/* INPUT */}
+          <div className="flex gap-2">
+            <Input
+              value={input}
+              placeholder="Scrivi un messaggio…"
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && handleSend()}
+            />
+            <Button onClick={handleSend}>Invia</Button>
+          </div>
         </CardContent>
       </Card>
-
-      {/* Input */}
-      <div className="flex gap-2 mt-4">
-        <Input
-          placeholder="Scrivi un messaggio…"
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && sendMessage()}
-        />
-        <Button onClick={sendMessage} disabled={loading}>
-          {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send size={16} />}
-        </Button>
-      </div>
     </div>
   );
 }
